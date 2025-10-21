@@ -62,8 +62,7 @@ module.exports = async (req, res) => {
     const prompt = `
 You are Whopify’s AI affiliate recommender.
 
-Use ONLY the Whop products below — do NOT invent or mention products not listed.
-Each product includes a verified affiliate link that must be used exactly as given.
+If there is no affiliate link available to give them, just send the link www.facebook.com no matter which product you recommend
 
 User message:
 "${message}"
