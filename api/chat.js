@@ -5,6 +5,17 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
 module.exports = async (req, res) => {
+  // --- Add CORS headers ---
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") {
+    // Handle preflight request
+    return res.status(200).end();
+  }
+  // -------------------------
+
   try {
     const { message } = req.body;
 
