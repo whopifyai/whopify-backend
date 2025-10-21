@@ -1,6 +1,7 @@
 const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
 
+// Initialize clients
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -8,7 +9,7 @@ const supabase = createClient(
 );
 
 module.exports = async (req, res) => {
-  // ✅ Allow requests from Framer
+  // --- CORS for Framer ---
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -16,15 +17,16 @@ module.exports = async (req, res) => {
 
   try {
     const { message } = req.body;
+    const affiliateUser = "wapify"; // ✅ your affiliate username
 
-    // ✅ Create embedding for user query
+    // --- Step 1: Embed user query ---
     const embeddingRes = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: message,
     });
     const queryEmbedding = embeddingRes.data[0].embedding;
 
-    // ✅ Query Supabase function
+    // --- Step 2: Match relevant Whops ---
     const { data: matches, error } = await supabase.rpc("match_whops", {
       query_embedding: queryEmbedding,
       match_threshold: 0.6,
@@ -32,49 +34,62 @@ module.exports = async (req, res) => {
     });
     if (error) throw error;
 
-    // ✅ Build affiliate context
-    const affiliateUser = "wapify"; // <–– your affiliate username
-    const context = matches
+    // --- Step 3: Build structured product context ---
+    const productList = matches
       .map(
-        (m) =>
-          `${m.title}: ${m.headline || ""}\n` +
+        (m, i) =>
+          `${i + 1}. ${m.title}\n` +
+          `Headline: ${m.headline || "No headline"}\n` +
           `Price: ${m.price || "N/A"}\n` +
-          `Affiliate link: https://whop.com/${m.route}?a=${affiliateUser}`
+          `Affiliate Link: https://whop.com/${m.route}?a=${affiliateUser}\n`
       )
-      .join("\n\n");
+      .join("\n");
 
-    // ✅ Richer AI prompt
+    // --- Step 4: AI prompt (grounded + affiliate enforced) ---
     const prompt = `
-You are Whopify’s affiliate recommender AI.
+You are Whopify’s AI affiliate recommender.
 
-A user said: "${message}"
+Use ONLY the Whop products provided below — do NOT invent or mention products that are not in the list.
+Each product includes an affiliate link (which must be used exactly as provided).
 
-Here are the most relevant Whop products:
-${context}
+User message:
+"${message}"
 
-Create a conversational, persuasive reply that:
-- Explains the best options for their goals
-- Mentions product names naturally
-- Includes clickable affiliate links
-- Uses a helpful, friendly tone (not salesy)
+Relevant Whop products:
+${productList}
+
+Write a rich, friendly, persuasive recommendation that:
+- Clearly mentions 2–3 of the best fits for the user's goal
+- Explains *why* each course or tool is valuable
+- Includes the provided affiliate links using markdown ([Title](URL))
+- Avoids generic or made-up products
+- Uses a warm, helpful tone (not overly salesy)
+- Adds emoji for visual appeal
 `;
 
+    // --- Step 5: Generate AI reply ---
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
     });
 
+    const aiResponse = completion.choices[0].message.content;
+
+    // --- Step 6: Return both text + structured data ---
+    const enrichedMatches = matches.map((m) => ({
+      title: m.title,
+      headline: m.headline,
+      price: m.price,
+      link: `https://whop.com/${m.route}?a=${affiliateUser}`,
+      logo: m.logo || m.image || null,
+    }));
+
     res.status(200).json({
-      response: completion.choices[0].message.content,
-      matches: matches.map((m) => ({
-        title: m.title,
-        headline: m.headline,
-        price: m.price,
-        link: `https://whop.com/${m.route}?a=${affiliateUser}`,
-      })),
+      response: aiResponse,
+      matches: enrichedMatches,
     });
   } catch (err) {
-    console.error(err);
+    console.error("❌ Chat API error:", err);
     res.status(500).json({ error: err.message });
   }
 };
