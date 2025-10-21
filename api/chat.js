@@ -2,7 +2,10 @@ const OpenAI = require("openai");
 const { createClient } = require("@supabase/supabase-js");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
 module.exports = async (req, res) => {
   // --- Add CORS headers ---
@@ -32,12 +35,13 @@ module.exports = async (req, res) => {
 
     if (!matches || matches.length === 0) {
       return res.status(200).json({
-        response: "No matching Whops found yet — try a different topic!",
+        response:
+          "No matching Whops found yet — try a different topic!",
         matches: [],
       });
     }
 
-    // Step 3: Build minimal product context (title + headline + rating + reviews + price)
+    // Step 3: Build concise product info (with free pricing handled)
     const context = matches
       .slice(0, 3)
       .map((m, i) => {
@@ -55,21 +59,35 @@ module.exports = async (req, res) => {
             ? `(${m.review_count} reviews)`
             : "";
 
-        const price = m.price ? `— ${m.price}` : "";
+        // Handle Free pricing explicitly
+        let price = "";
+        if (m.price) {
+          const lower = m.price.toLowerCase();
+          if (
+            lower.includes("free") ||
+            lower.includes("$0") ||
+            lower === "0" ||
+            lower === "0.00"
+          ) {
+            price = "— Free";
+          } else {
+            price = `— ${m.price}`;
+          }
+        }
 
         return `${i + 1}.) ${fullName}\n${rating} ${reviews} ${price}\n`;
       })
       .join("\n");
 
-    // Step 4: Simple prompt (no paragraphs, just top 3 formatted results)
+    // Step 4: Keep prompt simple and structured
     const prompt = `
 You are Whopify's recommender bot. 
-Based on the user's message "${message}", show ONLY the top 3 relevant Whop products.
-List them exactly in this format (no extra text):
-"1.) Title — Headline
-⭐ 4.8/5 (120 reviews) — $199"
-If a value is missing, skip it.
-Here are the products to choose from:
+Based on the user's message "${message}", return ONLY these top 3 Whop products in this exact structured format:
+1.) Title — Headline
+⭐ 4.8/5 (120 reviews) — $199
+(no explanations or extra text)
+
+Here are the top matches to display:
 ${context}
 `;
 
