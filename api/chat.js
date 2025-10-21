@@ -11,20 +11,20 @@ module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") {
-    // Handle preflight request
     return res.status(200).end();
   }
-  // -------------------------
 
   try {
     const { message } = req.body;
 
+    // Create embedding for user query
     const embeddingRes = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: message,
     });
     const queryEmbedding = embeddingRes.data[0].embedding;
 
+    // Query Supabase for the top matching Whops
     const { data: matches, error } = await supabase.rpc("match_whops", {
       query_embedding: queryEmbedding,
       match_threshold: 0.6,
@@ -32,18 +32,24 @@ module.exports = async (req, res) => {
     });
     if (error) throw error;
 
+    // Build text context for AI to summarize
     const context = matches
-      .map((m) => `${m.title}: ${m.headline} — ${m.price}`)
+      .map((m) => {
+        const avg = m.reviews_average ? `${m.reviews_average.toFixed(2)}⭐` : "no reviews yet";
+        const count = m.review_count ? `(${m.review_count} reviews)` : "";
+        return `${m.title}: ${m.headline || "No headline provided"} — ${m.price || "Price N/A"} — ${avg} ${count}`;
+      })
       .join("\n");
 
     const prompt = `
-You are Whopify's AI recommender. 
-Based on this user's message: "${message}", 
+You are Whopify's AI recommender.
+Based on this user's message: "${message}",
 recommend the best Whop products from the following list:
 
 ${context}
 
-Return a short, natural-language recommendation.
+For each, include whether it has reviews or not.
+Return a natural, friendly recommendation paragraph (not a bullet list).
 `;
 
     const completion = await openai.chat.completions.create({
