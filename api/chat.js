@@ -34,14 +34,21 @@ module.exports = async (req, res) => {
     });
     if (error) throw error;
 
-    // --- Step 3: Build structured product context ---
+    // --- Step 3: Build safe, valid affiliate URLs ---
+    const buildLink = (m) => {
+      const companyRoute = m.company_route || m.company?.route || "";
+      const productRoute = m.route || "";
+      if (!companyRoute || !productRoute) return null;
+      return `https://whop.com/${companyRoute}/${productRoute}?a=${affiliateUser}`;
+    };
+
     const productList = matches
       .map(
         (m, i) =>
           `${i + 1}. ${m.title}\n` +
           `Headline: ${m.headline || "No headline"}\n` +
           `Price: ${m.price || "N/A"}\n` +
-          `Affiliate Link: https://whop.com/${m.route}?a=${affiliateUser}\n`
+          `Affiliate Link: ${buildLink(m) || "Link unavailable"}\n`
       )
       .join("\n");
 
@@ -80,7 +87,7 @@ Write a rich, friendly, persuasive recommendation that:
       title: m.title,
       headline: m.headline,
       price: m.price,
-      link: `https://whop.com/${m.route}?a=${affiliateUser}`,
+      link: buildLink(m),
       logo: m.logo || m.image || null,
     }));
 
