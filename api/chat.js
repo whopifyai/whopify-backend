@@ -8,6 +8,7 @@ const supabase = createClient(
 );
 
 module.exports = async (req, res) => {
+  // --- Allow CORS for Framer / frontend ---
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -27,42 +28,42 @@ module.exports = async (req, res) => {
     const { data: matches, error } = await supabase.rpc("match_whops", {
       query_embedding: queryEmbedding,
       match_threshold: 0.6,
-      match_count: 10,
+      match_count: 5,
     });
     if (error) throw error;
 
-    // Step 3: Only include products with valid affiliate links
-    const validMatches = (matches || []).filter(
-      (m) => m.affiliate_link && m.affiliate_link.trim() !== ""
-    );
-
-    if (validMatches.length === 0) {
+    if (!matches || matches.length === 0) {
       return res.status(200).json({
-        response:
-          "Sorry, I couldn’t find any verified Whop products with affiliate links that fit your request yet. Please check back soon!",
+        response: "Hmm, I couldn’t find any good Whop matches just yet. Try rephrasing your question!",
         matches: [],
       });
     }
 
-    const topMatches = validMatches.slice(0, 3);
+    const topMatches = matches.slice(0, 3);
 
-    // Step 4: Build detailed product list for GPT
+    // Step 3: Build context for GPT — include placeholder when no link exists
     const productList = topMatches
-      .map(
-        (m, i) =>
+      .map((m, i) => {
+        const linkText = m.affiliate_link
+          ? m.affiliate_link
+          : "Link not available yet — I’ll come back with a link soon!";
+        return (
           `${i + 1}. ${m.title}\n` +
           `Headline: ${m.headline || "No headline"}\n` +
           `Price: ${m.price || "N/A"}\n` +
           `Rating: ${m.reviews_average || "N/A"}⭐ (${m.review_count || 0} reviews)\n` +
           `Members: ${m.member_count || "N/A"}\n` +
-          `Affiliate Link: ${m.affiliate_link}\n`
-      )
+          `Affiliate Link: ${linkText}\n`
+        );
+      })
       .join("\n");
 
+    // Step 4: Instruction prompt
     const prompt = `
 You are Whopify’s AI affiliate recommender.
 
-If there is no affiliate link available to give them, just send the link www.facebook.com no matter which product you recommend
+Use ONLY the Whop products provided below — do NOT invent or mention products that are not in the list.
+If a product’s affiliate link is missing, write "I'll come back with a link soon" in place of the link.
 
 User message:
 "${message}"
@@ -70,14 +71,14 @@ User message:
 Relevant Whop products:
 ${productList}
 
-Write a friendly, detailed recommendation that:
-- Highlights the top 2–3 best products for the user's goal
-- References real stats (e.g. number of reviews, average rating, or member count)
-- Explains *why* each one stands out
-- Includes the provided affiliate links in markdown format ([Product Name](URL))
-- Adds a confident but not pushy tone, with a bit of emoji for warmth
+Write a friendly, rich, natural-language recommendation that:
+- Mentions 2–3 of the best products for the user’s goal
+- Highlights helpful real stats (ratings, reviews, or members)
+- Includes the affiliate links or placeholder text in markdown ([Product Name](URL) or "I’ll come back with a link soon")
+- Sounds confident but human, adding emoji for warmth and excitement
 `;
 
+    // Step 5: Generate AI response
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
@@ -85,6 +86,7 @@ Write a friendly, detailed recommendation that:
 
     const aiResponse = completion.choices[0].message.content;
 
+    // Step 6: Return structured JSON
     const enrichedMatches = topMatches.map((m) => ({
       title: m.title,
       headline: m.headline,
@@ -92,7 +94,7 @@ Write a friendly, detailed recommendation that:
       rating: m.reviews_average,
       review_count: m.review_count,
       member_count: m.member_count,
-      link: m.affiliate_link,
+      link: m.affiliate_link || "Link not available yet — I’ll come back with a link soon!",
       logo: m.logo || m.image || null,
     }));
 
