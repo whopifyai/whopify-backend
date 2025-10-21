@@ -22,7 +22,7 @@ module.exports = async (req, res) => {
     });
     const queryEmbedding = embeddingRes.data[0].embedding;
 
-    // Step 2: Query Supabase
+    // Step 2: Query Supabase for top 3 matches
     const { data: matches, error } = await supabase.rpc("match_whops", {
       query_embedding: queryEmbedding,
       match_threshold: 0.3,
@@ -37,7 +37,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Step 3: Format only 3 best results
+    // Step 3: Format top 3 results with title + headline
     const context = matches
       .slice(0, 3)
       .map((m, i) => {
@@ -45,22 +45,31 @@ module.exports = async (req, res) => {
           m.reviews_average && !isNaN(m.reviews_average)
             ? `${m.reviews_average.toFixed(1)}/5 stars`
             : "no reviews yet";
-        return `(${i + 1}) ${m.title} — ${m.headline || "No headline provided"} — ${m.price || "N/A"} — ${rating}`;
+
+        const productName = m.headline
+          ? `${m.title}'s ${m.headline}`
+          : m.title;
+
+        return `(${i + 1}) ${productName} — ${m.price || "N/A"} — ${rating}`;
       })
       .join("\n");
 
-    // Step 4: Stronger prompt to prevent hallucination
+    // Step 4: Strong prompt to enforce real Whops and structure
     const prompt = `
 You are Whopify's AI recommender.
-ONLY use the products listed below — do NOT invent new ones.
+ONLY use the following 3 products listed below — do NOT invent new ones.
 
 User message: "${message}"
 
 Here are the top 3 matching Whop products:
 ${context}
 
-Write a concise, friendly response that summarizes why these exact 3 are good fits.
-Use natural language (no bullet points) and include their (x.x/5) star ratings or say "no reviews yet".
+Write a short, conversational recommendation paragraph that:
+- Describes why each product fits the user's goal.
+- Uses each product’s full name (title + headline).
+- Includes its (x.x/5) star rating or "no reviews yet".
+- Mentions the price naturally.
+Do not list more than 3 products.
 `;
 
     // Step 5: Generate response
