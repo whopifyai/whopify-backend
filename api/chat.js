@@ -1,10 +1,10 @@
-import OpenAI from "openai";
-import { createClient } from "@supabase/supabase-js";
+const OpenAI = require("openai");
+const { createClient } = require("@supabase/supabase-js");
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   try {
     const { message } = req.body;
 
@@ -51,4 +51,4 @@ Return a short, natural-language recommendation.
     console.error(err);
     res.status(500).json({ error: err.message });
   }
-}
+};
