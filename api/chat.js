@@ -11,20 +11,21 @@ module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") {
+    // Handle preflight request
     return res.status(200).end();
   }
 
   try {
     const { message } = req.body;
 
-    // Create embedding for user query
+    // Step 1: Create embedding for user query
     const embeddingRes = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: message,
     });
     const queryEmbedding = embeddingRes.data[0].embedding;
 
-    // Query Supabase for the top matching Whops
+    // Step 2: Query Supabase
     const { data: matches, error } = await supabase.rpc("match_whops", {
       query_embedding: queryEmbedding,
       match_threshold: 0.6,
@@ -32,15 +33,21 @@ module.exports = async (req, res) => {
     });
     if (error) throw error;
 
-    // Build text context for AI to summarize
+    // Step 3: Build a context string for the AI prompt
     const context = matches
       .map((m) => {
-        const avg = m.reviews_average ? `${m.reviews_average.toFixed(2)}⭐` : "no reviews yet";
-        const count = m.review_count ? `(${m.review_count} reviews)` : "";
-        return `${m.title}: ${m.headline || "No headline provided"} — ${m.price || "Price N/A"} — ${avg} ${count}`;
+        let ratingText;
+        if (m.reviews_average && !isNaN(m.reviews_average)) {
+          ratingText = `Rated ${m.reviews_average.toFixed(1)}/5 stars`;
+        } else {
+          ratingText = "No reviews yet";
+        }
+
+        return `${m.title}: ${m.headline || "No headline provided"} — ${m.price || "Price N/A"} — ${ratingText}`;
       })
       .join("\n");
 
+    // Step 4: AI recommendation prompt
     const prompt = `
 You are Whopify's AI recommender.
 Based on this user's message: "${message}",
@@ -48,10 +55,11 @@ recommend the best Whop products from the following list:
 
 ${context}
 
-For each, include whether it has reviews or not.
-Return a natural, friendly recommendation paragraph (not a bullet list).
+For each recommended product, mention its star rating (e.g., 4.7/5 stars) or note that it has no reviews.
+Return a short, natural-language response that feels personalized and friendly.
 `;
 
+    // Step 5: Generate the AI response
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
