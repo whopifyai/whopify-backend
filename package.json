@@ -4,6 +4,7 @@
   "type": "module",
   "dependencies": {
     "@supabase/supabase-js": "^2.43.0",
+    "dotenv": "^17.2.3",
     "openai": "^4.68.4"
   }
 }
