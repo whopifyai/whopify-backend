@@ -32,44 +32,45 @@ module.exports = async (req, res) => {
 
     if (!matches || matches.length === 0) {
       return res.status(200).json({
-        response: "Hmm, I couldn’t find any Whops that match that yet — try rephrasing!",
+        response: "No matching Whops found yet — try a different topic!",
         matches: [],
       });
     }
 
-    // Step 3: Format top 3 results with title + headline
+    // Step 3: Build minimal product context (title + headline + rating + reviews + price)
     const context = matches
       .slice(0, 3)
       .map((m, i) => {
-        const rating =
-          m.reviews_average && !isNaN(m.reviews_average)
-            ? `${m.reviews_average.toFixed(1)}/5 stars`
-            : "no reviews yet";
-
-        const productName = m.headline
-          ? `${m.title}'s ${m.headline}`
+        const fullName = m.headline
+          ? `${m.title} — ${m.headline}`
           : m.title;
 
-        return `(${i + 1}) ${productName} — ${m.price || "N/A"} — ${rating}`;
+        const rating =
+          m.reviews_average && !isNaN(m.reviews_average)
+            ? `⭐ ${m.reviews_average.toFixed(1)}/5`
+            : "⭐ No rating yet";
+
+        const reviews =
+          m.review_count && !isNaN(m.review_count)
+            ? `(${m.review_count} reviews)`
+            : "";
+
+        const price = m.price ? `— ${m.price}` : "";
+
+        return `${i + 1}.) ${fullName}\n${rating} ${reviews} ${price}\n`;
       })
       .join("\n");
 
-    // Step 4: Strong prompt to enforce real Whops and structure
+    // Step 4: Simple prompt (no paragraphs, just top 3 formatted results)
     const prompt = `
-You are Whopify's AI recommender.
-ONLY use the following 3 products listed below — do NOT invent new ones.
-
-User message: "${message}"
-
-Here are the top 3 matching Whop products:
+You are Whopify's recommender bot. 
+Based on the user's message "${message}", show ONLY the top 3 relevant Whop products.
+List them exactly in this format (no extra text):
+"1.) Title — Headline
+⭐ 4.8/5 (120 reviews) — $199"
+If a value is missing, skip it.
+Here are the products to choose from:
 ${context}
-
-Write a short, conversational recommendation paragraph that:
-- Describes why each product fits the user's goal.
-- Uses each product’s full name (title + headline).
-- Includes its (x.x/5) star rating or "no reviews yet".
-- Mentions the price naturally.
-Do not list more than 3 products.
 `;
 
     // Step 5: Generate response
