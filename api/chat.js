@@ -23,30 +23,47 @@ module.exports = async (req, res) => {
     });
     const queryEmbedding = embeddingRes.data[0].embedding;
 
-    // Step 2: Match relevant Whops
+    // Step 2: Get matches
     const { data: matches, error } = await supabase.rpc("match_whops", {
       query_embedding: queryEmbedding,
       match_threshold: 0.6,
-      match_count: 3,
+      match_count: 10,
     });
     if (error) throw error;
 
-    // Step 3: Build prompt using stored affiliate links
-    const productList = matches
+    // Step 3: Only include products with valid affiliate links
+    const validMatches = (matches || []).filter(
+      (m) => m.affiliate_link && m.affiliate_link.trim() !== ""
+    );
+
+    if (validMatches.length === 0) {
+      return res.status(200).json({
+        response:
+          "Sorry, I couldn’t find any verified Whop products with affiliate links that fit your request yet. Please check back soon!",
+        matches: [],
+      });
+    }
+
+    const topMatches = validMatches.slice(0, 3);
+
+    // Step 4: Build detailed product list for GPT
+    const productList = topMatches
       .map(
         (m, i) =>
           `${i + 1}. ${m.title}\n` +
           `Headline: ${m.headline || "No headline"}\n` +
           `Price: ${m.price || "N/A"}\n` +
-          `Affiliate Link: ${m.affiliate_link || "No link set"}\n`
+          `Rating: ${m.reviews_average || "N/A"}⭐ (${m.review_count || 0} reviews)\n` +
+          `Members: ${m.member_count || "N/A"}\n` +
+          `Affiliate Link: ${m.affiliate_link}\n`
       )
       .join("\n");
 
     const prompt = `
 You are Whopify’s AI affiliate recommender.
 
-Use ONLY the Whop products provided below — do NOT invent or mention products that are not in the list.
-Each product includes an affiliate link (which must be used exactly as provided).
+Use ONLY the Whop products below — do NOT invent or mention products not listed.
+Each product includes a verified affiliate link that must be used exactly as given.
 
 User message:
 "${message}"
@@ -54,13 +71,12 @@ User message:
 Relevant Whop products:
 ${productList}
 
-Write a rich, friendly, persuasive recommendation that:
-- Clearly mentions 2–3 of the best fits for the user's goal
-- Explains *why* each course or tool is valuable
-- Includes the provided affiliate links using markdown ([Title](URL))
-- Avoids generic or made-up products
-- Uses a warm, helpful tone (not overly salesy)
-- Adds emoji for visual appeal
+Write a friendly, detailed recommendation that:
+- Highlights the top 2–3 best products for the user's goal
+- References real stats (e.g. number of reviews, average rating, or member count)
+- Explains *why* each one stands out
+- Includes the provided affiliate links in markdown format ([Product Name](URL))
+- Adds a confident but not pushy tone, with a bit of emoji for warmth
 `;
 
     const completion = await openai.chat.completions.create({
@@ -70,11 +86,14 @@ Write a rich, friendly, persuasive recommendation that:
 
     const aiResponse = completion.choices[0].message.content;
 
-    const enrichedMatches = matches.map((m) => ({
+    const enrichedMatches = topMatches.map((m) => ({
       title: m.title,
       headline: m.headline,
       price: m.price,
-      link: m.affiliate_link || null,
+      rating: m.reviews_average,
+      review_count: m.review_count,
+      member_count: m.member_count,
+      link: m.affiliate_link,
       logo: m.logo || m.image || null,
     }));
 

@@ -16,16 +16,23 @@ for (const w of whops) {
     input: text,
   });
 
-  await supabase.from("whop_embeddings").upsert({
-    id: w.id,
-    title: w.title,
-    headline: w.headline,
-    description: w.description,
-    price: w.defaultPlan?.priceTag || "",
-    image: w.logo?.sourceUrl || w.company?.logo?.sourceUrl || "",
-    route: w.route,
-    embedding: embedding.data[0].embedding
-  });
+await supabase.from("whop_embeddings").upsert({
+  id: w.id,
+  title: w.title,
+  headline: w.headline,
+  description: w.description,
+  price: w.defaultPlan?.priceTag || "",
+  image: w.logo?.sourceUrl || w.company?.logo?.sourceUrl || "",
+  route: w.route,
+  reviews_average: w.company?.reviewsAverage || null,
+  review_count: w.company?.publishedReviewsCount || null,
+  member_count: w.company?.memberCount || null,
+  popularity_score: w.popularity_score || null,
+  value_score: w.value_score || null,
+  embedding: embedding.data[0].embedding
+});
+
+
 
   console.log(`✅ Uploaded ${w.title}`);
 }
