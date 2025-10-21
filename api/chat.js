@@ -8,14 +8,12 @@ module.exports = async (req, res) => {
   try {
     const { message } = req.body;
 
-    // Step 1: Embed the user message
     const embeddingRes = await openai.embeddings.create({
       model: "text-embedding-3-small",
       input: message,
     });
     const queryEmbedding = embeddingRes.data[0].embedding;
 
-    // Step 2: Find similar Whops in Supabase
     const { data: matches, error } = await supabase.rpc("match_whops", {
       query_embedding: queryEmbedding,
       match_threshold: 0.6,
@@ -23,7 +21,6 @@ module.exports = async (req, res) => {
     });
     if (error) throw error;
 
-    // Step 3: Generate AI recommendation
     const context = matches
       .map((m) => `${m.title}: ${m.headline} — ${m.price}`)
       .join("\n");
