@@ -40,7 +40,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Step 3: Build concise product info (now includes affiliate links)
+    // Step 3: Build concise product info (now always includes affiliate links)
     const context = matches
       .slice(0, 3)
       .map((m, i) => {
@@ -74,11 +74,10 @@ module.exports = async (req, res) => {
           }
         }
 
-        // ✅ Add affiliate link if available
-        const affiliate =
-          m.affiliate_link || m.affiliateLink
-            ? `\n🔗 ${m.affiliate_link || m.affiliateLink}`
-            : "";
+        // ✅ Always include affiliate link if available
+        const affiliate = m.affiliate_link
+          ? `\n🔗 ${m.affiliate_link}`
+          : "";
 
         return `${i + 1}.) ${fullName}\n${rating} ${reviews} ${price}${affiliate}\n`;
       })
@@ -90,6 +89,7 @@ You are Whopify's recommender bot.
 Based on the user's message "${message}", return ONLY these top 3 Whop products in this exact structured format:
 1.) Title — Headline
 ⭐ 4.8/5 (120 reviews) — $199
+🔗 affiliate link
 (no explanations or extra text)
 
 Here are the top matches to display:
