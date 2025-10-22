@@ -35,13 +35,12 @@ module.exports = async (req, res) => {
 
     if (!matches || matches.length === 0) {
       return res.status(200).json({
-        response:
-          "No matching Whops found yet — try a different topic!",
+        response: "No matching Whops found yet — try a different topic!",
         matches: [],
       });
     }
 
-    // Step 3: Build concise product info (with free pricing handled)
+    // Step 3: Build concise product info (now includes affiliate links)
     const context = matches
       .slice(0, 3)
       .map((m, i) => {
@@ -75,7 +74,13 @@ module.exports = async (req, res) => {
           }
         }
 
-        return `${i + 1}.) ${fullName}\n${rating} ${reviews} ${price}\n`;
+        // ✅ Add affiliate link if available
+        const affiliate =
+          m.affiliate_link || m.affiliateLink
+            ? `\n🔗 ${m.affiliate_link || m.affiliateLink}`
+            : "";
+
+        return `${i + 1}.) ${fullName}\n${rating} ${reviews} ${price}${affiliate}\n`;
       })
       .join("\n");
 
