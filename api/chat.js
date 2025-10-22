@@ -8,6 +8,7 @@ const supabase = createClient(
 );
 
 module.exports = async (req, res) => {
+  // --- CORS headers ---
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -38,7 +39,7 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Step 3: Include affiliate links directly
+    // Step 3: Build formatted product list
     const context = matches
       .slice(0, 3)
       .map((m, i) => {
@@ -60,23 +61,25 @@ module.exports = async (req, res) => {
               : `— ${m.price}`;
         }
 
-        // ✅ Actual URL pulled straight from Supabase
-        const affiliate = m.affiliate_link
-          ? `\n🔗 ${m.affiliate_link}`
-          : "";
+        // ✅ Use affiliate link if available, otherwise insert placeholder
+        const affiliate =
+          m.affiliate_link && m.affiliate_link.trim() !== ""
+            ? m.affiliate_link
+            : "https://actual-link-here";
 
-        return `${i + 1}.) ${fullName}\n${rating} ${reviews} ${price}${affiliate}\n`;
+        return `${i + 1}.) ${fullName}\n${rating} ${reviews} ${price}\n🔗 ${affiliate}\n`;
       })
       .join("\n");
 
-    // Step 4: Keep GPT formatting but ensure URLs remain
+    // Step 4: Prompt for GPT
     const prompt = `
-You are Whopify's recommender bot. 
-Based on the user's message "${message}", return ONLY these top 3 Whop products in this exact structured format:
+You are Whopify's AI recommender.
+Based on the user's message "${message}", return the following top 3 Whop products in this exact format:
 1.) Title — Headline
 ⭐ 4.8/5 (120 reviews) — $199
 🔗 https://actual-link-here
-(no explanations or extra text)
+
+(no extra commentary or filler text)
 
 Here are the top matches to display:
 ${context}
