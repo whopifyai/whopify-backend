@@ -8,11 +8,9 @@ const supabase = createClient(
 );
 
 module.exports = async (req, res) => {
-  // --- Add CORS headers ---
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
   if (req.method === "OPTIONS") return res.status(200).end();
 
   try {
@@ -25,7 +23,7 @@ module.exports = async (req, res) => {
     });
     const queryEmbedding = embeddingRes.data[0].embedding;
 
-    // Step 2: Query Supabase for top 3 matches
+    // Step 2: Query Supabase
     const { data: matches, error } = await supabase.rpc("match_whops", {
       query_embedding: queryEmbedding,
       match_threshold: 0.3,
@@ -40,41 +38,29 @@ module.exports = async (req, res) => {
       });
     }
 
-    // Step 3: Build concise product info (now always includes affiliate links)
+    // Step 3: Include affiliate links directly
     const context = matches
       .slice(0, 3)
       .map((m, i) => {
-        const fullName = m.headline
-          ? `${m.title} — ${m.headline}`
-          : m.title;
-
+        const fullName = m.headline ? `${m.title} — ${m.headline}` : m.title;
         const rating =
           m.reviews_average && !isNaN(m.reviews_average)
             ? `⭐ ${m.reviews_average.toFixed(1)}/5`
             : "⭐ No rating yet";
-
         const reviews =
           m.review_count && !isNaN(m.review_count)
             ? `(${m.review_count} reviews)`
             : "";
-
-        // Handle Free pricing explicitly
         let price = "";
         if (m.price) {
           const lower = m.price.toLowerCase();
-          if (
-            lower.includes("free") ||
-            lower.includes("$0") ||
-            lower === "0" ||
-            lower === "0.00"
-          ) {
-            price = "— Free";
-          } else {
-            price = `— ${m.price}`;
-          }
+          price =
+            lower.includes("free") || lower.includes("$0")
+              ? "— Free"
+              : `— ${m.price}`;
         }
 
-        // ✅ Always include affiliate link if available
+        // ✅ Actual URL pulled straight from Supabase
         const affiliate = m.affiliate_link
           ? `\n🔗 ${m.affiliate_link}`
           : "";
@@ -83,20 +69,19 @@ module.exports = async (req, res) => {
       })
       .join("\n");
 
-    // Step 4: Keep prompt simple and structured
+    // Step 4: Keep GPT formatting but ensure URLs remain
     const prompt = `
 You are Whopify's recommender bot. 
 Based on the user's message "${message}", return ONLY these top 3 Whop products in this exact structured format:
 1.) Title — Headline
 ⭐ 4.8/5 (120 reviews) — $199
-🔗 affiliate link
+🔗 https://actual-link-here
 (no explanations or extra text)
 
 Here are the top matches to display:
 ${context}
 `;
 
-    // Step 5: Generate response
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
